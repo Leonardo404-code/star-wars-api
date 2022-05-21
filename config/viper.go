@@ -9,7 +9,7 @@ import (
 func LoadDotEnv() {
 	viper.AddConfigPath(".")
 
-	viper.SetConfigName(".env.local")
+	viper.SetConfigName(".env")
 
 	viper.SetConfigType("env")
 
