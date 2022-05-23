@@ -3,19 +3,60 @@ package planets
 import (
 	"ame-challenge/internal/database"
 	"ame-challenge/pkg/models"
+	"encoding/json"
+	"io/ioutil"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/peterhellberg/swapi"
+	"github.com/spf13/viper"
 )
 
+// Get Planets by request much more fast
+func GetPlanetsByURL(c *gin.Context) {
+	url := viper.GetString("PLANETS_URL")
+
+	var planetsObject models.Response
+
+	resp, err := http.Get(url)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	respBody, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
+
+	json.Unmarshal(respBody, &planetsObject)
+
+	// if err := database.DBConn.Find(&planetsDatabase); err.Error != nil {
+	// 	c.JSON(http.StatusInternalServerError, gin.H{
+	// 		"error": err,
+	// 	})
+
+	// 	return
+	// }
+
+	c.JSON(200, planetsObject)
+}
+
+// Get Planets by Client
 func GetPlanets(c *gin.Context) {
 	client := swapi.DefaultClient
 
 	var planets []models.Planet
 
-	var formatPlanet models.Planet
+	var planetsInDatabase models.Planet
 
 	for i := 1; i <= 6; i++ {
 		newPlanet, err := client.Planet(i)
@@ -28,19 +69,29 @@ func GetPlanets(c *gin.Context) {
 			return
 		}
 
-		formatPlanet.Name = newPlanet.Name
-		formatPlanet.Ground = newPlanet.Terrain
-		formatPlanet.Weather = newPlanet.Climate
-		formatPlanet.MoviesNumber = len(newPlanet.FilmURLs)
+		planetsInDatabase = models.Planet{
+			Name:         newPlanet.Name,
+			Terrain:      newPlanet.Terrain,
+			Climate:      newPlanet.Climate,
+			MoviesNumber: len(newPlanet.FilmURLs),
+		}
 
-		planets = append(planets, formatPlanet)
+		planets = append(planets, planetsInDatabase)
+
+		// if err := database.DBConn.Create(&planetsInDatabase); err.Error != nil {
+		// 	c.JSON(http.StatusInternalServerError, gin.H{
+		// 		"error": err.Error,
+		// 	})
+		// }
 	}
 
-	// if err := database.DBConn.Find(&planets); err.Error != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{
-	// 		"error": err.Error,
-	// 	})
-	// }
+	if err := database.DBConn.Find(&planetsInDatabase); err.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error,
+		})
+	}
+
+	planets = append(planets, planetsInDatabase)
 
 	c.JSON(200, planets)
 }
@@ -105,7 +156,7 @@ func CreatePlanet(c *gin.Context) {
 		return
 	}
 
-	if planets.Weather == "" {
+	if planets.Climate == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "weather is required",
 		})
@@ -113,7 +164,7 @@ func CreatePlanet(c *gin.Context) {
 		return
 	}
 
-	if planets.Ground == "" {
+	if planets.Terrain == "" {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "ground is required",
 		})
