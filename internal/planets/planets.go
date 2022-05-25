@@ -14,10 +14,12 @@ import (
 )
 
 // Get Planets by request much more fast
-func GetPlanetsByURL(c *gin.Context) {
+func GetPlanets(c *gin.Context) {
 	url := viper.GetString("PLANETS_URL")
 
 	var planetsObject models.Response
+
+	var planetsDatabase models.Planet
 
 	resp, err := http.Get(url)
 
@@ -39,61 +41,18 @@ func GetPlanetsByURL(c *gin.Context) {
 
 	json.Unmarshal(respBody, &planetsObject)
 
-	// if err := database.DBConn.Find(&planetsDatabase); err.Error != nil {
-	// 	c.JSON(http.StatusInternalServerError, gin.H{
-	// 		"error": err,
-	// 	})
-
-	// 	return
-	// }
-
-	c.JSON(200, planetsObject)
-}
-
-// Get Planets by Client
-func GetPlanets(c *gin.Context) {
-	client := swapi.DefaultClient
-
-	var planets []models.Planet
-
-	var planetsInDatabase models.Planet
-
-	for i := 1; i <= 6; i++ {
-		newPlanet, err := client.Planet(i)
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"error": err,
-			})
-
-			return
-		}
-
-		planetsInDatabase = models.Planet{
-			Name:         newPlanet.Name,
-			Terrain:      newPlanet.Terrain,
-			Climate:      newPlanet.Climate,
-			MoviesNumber: len(newPlanet.FilmURLs),
-		}
-
-		planets = append(planets, planetsInDatabase)
-
-		// if err := database.DBConn.Create(&planetsInDatabase); err.Error != nil {
-		// 	c.JSON(http.StatusInternalServerError, gin.H{
-		// 		"error": err.Error,
-		// 	})
-		// }
-	}
-
-	if err := database.DBConn.Find(&planetsInDatabase); err.Error != nil {
+	if err := database.DBConn.Find(&planetsDatabase); err.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error,
+			"error": err,
 		})
+
+		return
 	}
 
-	planets = append(planets, planetsInDatabase)
-
-	c.JSON(200, planets)
+	c.JSON(200, gin.H{
+		"api":      planetsObject.Result,
+		"database": planetsDatabase,
+	})
 }
 
 func GetPlanetById(c *gin.Context) {
@@ -172,7 +131,7 @@ func CreatePlanet(c *gin.Context) {
 		return
 	}
 
-	if planets.MoviesNumber < 1 {
+	if planets.Films < 1 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "movies_number is required",
 		})
