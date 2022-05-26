@@ -4,22 +4,24 @@ import (
 	"ame-challenge/internal/database"
 	"ame-challenge/pkg/models"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/peterhellberg/swapi"
-	"github.com/spf13/viper"
 )
 
 // Get Planets by request much more fast
 func GetPlanets(c *gin.Context) {
-	url := viper.GetString("PLANETS_URL")
+	url := "https://swapi.dev/api/planets/?format=json"
 
-	var planetsObject models.Response
+	var (
+		planetsObject models.Response
 
-	var planetsDatabase models.Planet
+		planetsDatabase []models.Planet
+	)
 
 	resp, err := http.Get(url)
 
@@ -60,21 +62,19 @@ func GetPlanetById(c *gin.Context) {
 
 	planetID, err := strconv.Atoi(c.Param("id"))
 
+	var planetDatabase models.Planet
+
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err,
 		})
 	}
 
-	if planetID < 1 || planetID > 6 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "planet id must be betwenn 0 and 7",
-		})
-
-		return
-	}
-
 	newPlanet, err := client.Planet(planetID)
+
+	if planetID < 1 || planetID > 6 {
+		newPlanet = swapi.Planet{}
+	}
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -84,16 +84,69 @@ func GetPlanetById(c *gin.Context) {
 		return
 	}
 
+	if err := database.DBConn.Where("id = ?", planetID).Find(&planetDatabase); err.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err.Error,
+		})
+
+		return
+	}
+
 	c.JSON(200, gin.H{
-		"name":          newPlanet.Name,
-		"weather":       newPlanet.Climate,
-		"terrain":       newPlanet.Terrain,
-		"movies_number": len(newPlanet.FilmURLs),
+		"database": planetDatabase,
+		"api": models.Planet{
+			Name:    newPlanet.Name,
+			Climate: newPlanet.Climate,
+			Terrain: newPlanet.Terrain,
+			Films:   len(newPlanet.FilmURLs),
+		},
 	})
 }
 
 func GetPlanetByName(c *gin.Context) {
-	c.String(200, "Hi")
+	name := c.Query("name")
+	client := swapi.DefaultClient
+
+	var (
+		planetsDatabase models.Planet
+		planet          swapi.Planet
+	)
+
+	if err := database.DBConn.Table("planets").Where("name LIKE ?", fmt.Sprintf("%%%s%%", name)).
+		Find(&planetsDatabase); err.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": err,
+		})
+
+		return
+	}
+
+	switch {
+	case name == "Tatooine":
+		planet, _ = client.Planet(1)
+	case name == "Alderaan":
+		planet, _ = client.Planet(2)
+	case name == "Yavin IV" || name == "Yavin":
+		planet, _ = client.Planet(3)
+	case name == "Hoth":
+		planet, _ = client.Planet(4)
+	case name == "Dagobah":
+		planet, _ = client.Planet(5)
+	case name == "Bespin":
+		planet, _ = client.Planet(6)
+	default:
+		planet = swapi.Planet{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"database": planetsDatabase,
+		"api": models.Planet{
+			Name:    planet.Name,
+			Climate: planet.Climate,
+			Terrain: planet.Terrain,
+			Films:   len(planet.FilmURLs),
+		},
+	})
 }
 
 func CreatePlanet(c *gin.Context) {
@@ -163,7 +216,7 @@ func DeletePlanet(c *gin.Context) {
 		return
 	}
 
-	if err := database.DBConn.Delete(&planet, planetID); err.Error != nil {
+	if err := database.DBConn.Where("id = ?", planetID).Delete(&planet); err.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": err.Error,
 		})
